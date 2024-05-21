@@ -1,57 +1,54 @@
 #include <Arduino.h>
-#include <CheapStepper.h>
+#include <TinyStepper_28BYJ_48.h>
 
-CheapStepper stepper(6, 7, 8, 9);
-boolean moveClockwise = true;
+const int LED_PIN = 13;
+const int MOTOR_IN1_PIN = 2;
+const int MOTOR_IN2_PIN = 3;
+const int MOTOR_IN3_PIN = 4;
+const int MOTOR_IN4_PIN = 5;
+const int STOP_BUTTON_PIN = 9;
+
+const int STEPS_PER_REVOLUTION = 2048;
+
+TinyStepper_28BYJ_48 stepper;
+
+boolean pushLinearActuator(uint16_t steps);
+boolean pullLinearActuator(uint16_t steps);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Ready to start moving!");
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
+
+  digitalWrite(LED_PIN, LOW);
+
+  stepper.connectToPins(MOTOR_IN1_PIN, MOTOR_IN2_PIN, MOTOR_IN3_PIN,
+                        MOTOR_IN4_PIN);
 }
 
-void loop() {  // let's move a full rotation (4096 mini-steps)
-  // we'll go step-by-step using the step() function
+void loop() {
+  Serial.println(pushLinearActuator(1));
+  delay(3000);
+}
 
-  for (int s = 0; s < 4096; s++) {
-    // this will loop 4096 times
-    // 4096 steps = full rotation using default values
-    /* Note:
-     * you could alternatively use 4076 steps...
-     * if you think your 28BYJ-48 stepper's internal gear ratio is 63.68395:1
-     * (measured) rather than 64:1 (advertised) for more info, see:
-     * http://forum.arduino.cc/index.php?topic=71964.15)
-     */
+/* Push the linear actuator for N steps. */
+boolean pushLinearActuator(uint16_t steps) {
+  stepper.setCurrentPositionInSteps(0);
+  stepper.setupMoveInSteps(2048 * steps);
+  stepper.setSpeedInStepsPerSecond(500);
+  stepper.setAccelerationInStepsPerSecondPerSecond(65536);
 
-    // let's move one "step" (of the 4096 per full rotation)
-
-    stepper.step(moveClockwise);
-    /* the direction is based on moveClockwise boolean:
-     * true for clockwise, false for counter-clockwise
-     * -- you could also say stepper.stepCW(); or stepper.stepCCW();
-     */
-
-    // now let's get the current step position of motor
-
-    int nStep = stepper.getStep();
-
-    // and if it's divisible by 64...
-
-    if (nStep % 64 == 0) {
-      // let's print the position to the console
-
-      Serial.print("current step position: ");
-      Serial.print(nStep);
-      Serial.println();
+  while (!stepper.motionComplete()) {
+    if ((digitalRead(STOP_BUTTON_PIN) == HIGH)) {
+      stepper.processMovement();
+    } else {
+      return false;
     }
   }
+  return true;
+}
 
-  // now we've moved 4096 steps
-
-  // let's wait one second
-
-  delay(1000);
-
-  // and switch directions before starting loop() again
-
-  moveClockwise = !moveClockwise;
+/* Pull the linear actuator for N steps. */
+boolean pullLinearActuator(uint16_t steps) {
+  return pushLinearActuator(-(steps));
 }
