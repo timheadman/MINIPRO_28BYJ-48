@@ -1,54 +1,30 @@
 #include <Arduino.h>
-#include <TinyStepper_28BYJ_48.h>
+#include <CheapStepper.h>
 
-const int LED_PIN = 13;
-const int MOTOR_IN1_PIN = 2;
-const int MOTOR_IN2_PIN = 3;
-const int MOTOR_IN3_PIN = 4;
-const int MOTOR_IN4_PIN = 5;
-const int STOP_BUTTON_PIN = 9;
-
-const int STEPS_PER_REVOLUTION = 2048;
-
-TinyStepper_28BYJ_48 stepper;
-
-boolean pushLinearActuator(uint16_t steps);
-boolean pullLinearActuator(uint16_t steps);
+CheapStepper stepper(2, 3, 4, 5);
 
 void setup() {
   Serial.begin(115200);
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(STOP_BUTTON_PIN, INPUT_PULLUP);
+  stepper.setRpm(10);
+  Serial.println();
+  Serial.print(stepper.getRpm());
+  Serial.print(" rpm = delay of ");
+  Serial.print(stepper.getDelay());
+  Serial.println(" microseconds between steps");
 
-  digitalWrite(LED_PIN, LOW);
-
-  stepper.connectToPins(MOTOR_IN1_PIN, MOTOR_IN2_PIN, MOTOR_IN3_PIN,
-                        MOTOR_IN4_PIN);
+  // stepper.setTotalSteps(4076);
+  /* you can uncomment the above line if you think your motor
+   * is geared 63.68395:1 (measured) rather than 64:1 (advertised)
+   * which would make the total steps 4076 (rather than default 4096)
+   * for more info see: http://forum.arduino.cc/index.php?topic=71964.15
+   */
 }
 
 void loop() {
-  Serial.println(pushLinearActuator(1));
-  delay(3000);
+  static uint16_t counter = 0;
+  counter++;
+  stepper.moveDegreesCW(360 * counter);
+  Serial.println("[DEGREES] Step position: " + String(stepper.getStep()) + " / 4096");
+  delay(1000);
 }
 
-/* Push the linear actuator for N steps. */
-boolean pushLinearActuator(uint16_t steps) {
-  stepper.setCurrentPositionInSteps(0);
-  stepper.setupMoveInSteps(2048 * steps);
-  stepper.setSpeedInStepsPerSecond(500);
-  stepper.setAccelerationInStepsPerSecondPerSecond(65536);
-
-  while (!stepper.motionComplete()) {
-    if ((digitalRead(STOP_BUTTON_PIN) == HIGH)) {
-      stepper.processMovement();
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
-
-/* Pull the linear actuator for N steps. */
-boolean pullLinearActuator(uint16_t steps) {
-  return pushLinearActuator(-(steps));
-}
