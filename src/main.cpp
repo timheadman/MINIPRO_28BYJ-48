@@ -79,6 +79,7 @@ boolean powerOnStepper() {
     digitalWrite(PIN_MOTOR_POWER, HIGH);
     return true;
   } else {
+    !minSwitchStatus ? interruptMinLimitSwitch() : interruptMaxLimitSwitch();
     Serial.println("[ERROR] Bad attempt to power on stepper. Current turn: " +
                    String(currentTurn) +
                    ", PIN_MIN_POSITION_SWITCH = " + String(minSwitchStatus) +
