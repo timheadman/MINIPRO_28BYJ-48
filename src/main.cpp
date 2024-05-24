@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <CheapStepper.h>
 #define PIN_MOTOR_POWER 6
+#define PIN_ZERO_POSITION_SWITCH 7
 
 CheapStepper stepper(2, 3, 4, 5);
 bool moveClockwise = true;
