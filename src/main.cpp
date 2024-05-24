@@ -9,47 +9,64 @@
 #define PIN_MOTOR_POWER 8
 #define PIN_LED 13
 
-void processZeroPositionInterrupt();
-void makeTurnCW(uint16_t turns);
-void powerOnStepper();
-void powerOffStepper();
-
 CheapStepper stepper(PIN_STEPPER_1, PIN_STEPPER_2, PIN_STEPPER_3,
                      PIN_STEPPER_4);
-bool moveClockwise = true;
-uint32_t moveStartTime = 0;
-uint16_t intCounter = 0;
+int32_t currentTurn = -1;
+
+void turnToPush(uint16_t turns);
+void turnToPull(uint16_t turns);
+void powerOnStepper();
+void powerOffStepper();
+void gotoZero();
+void interruptMinLimitSwitch();
 
 void setup() {
   Serial.begin(115200);
   stepper.setRpm(24);
   pinMode(PIN_MOTOR_POWER, OUTPUT);
   pinMode(PIN_ZERO_POSITION_SWITCH, INPUT_PULLUP);
-  attachInterrupt(0, processZeroPositionInterrupt, FALLING);
+  attachInterrupt(0, interruptMinLimitSwitch, FALLING);
+  gotoZero();
 }
 
 void loop() {
-  static uint32_t counter = 0;
   stepper.run();
-  counter % 2 ? powerOnStepper() : powerOffStepper();
 
   if (stepper.getStepsLeft() == 0) {
-    Serial.println("Turn " + String(++counter) + " - " +
-                   String(millis() - moveStartTime) + " ms. [" +
-                   String(intCounter) + "]");
-    makeTurnCW(1);
-    moveStartTime = millis();
+    Serial.println("[" + String(currentTurn) + "] " +
+                   String(digitalRead(PIN_ZERO_POSITION_SWITCH)));
+
+    turnToPush(1);
+    delay(3000);
   }
 }
 
-void powerOnStepper() { digitalWrite(PIN_MOTOR_POWER, HIGH); }
-
-void powerOffStepper() { digitalWrite(PIN_MOTOR_POWER, LOW); }
-
-void makeTurnCW(uint16_t turns) { stepper.newMoveDegreesCW(360 * turns); }
-
-void processZeroPositionInterrupt() {
+void interruptMinLimitSwitch() {
   powerOffStepper();
   stepper.stop();
-  intCounter++;
+  currentTurn = 0;
 }
+
+void gotoZero() {
+  powerOnStepper();
+  turnToPull((UINT16_MAX / 2 / 360) - 1);
+}
+
+void powerOnStepper() { digitalWrite(PIN_MOTOR_POWER, HIGH); }
+void powerOffStepper() { digitalWrite(PIN_MOTOR_POWER, LOW); }
+
+void turnToPush(uint16_t turns) {
+  ++currentTurn;
+  powerOnStepper();
+  stepper.newMoveDegreesCW(360 * turns);
+}
+
+void turnToPull(uint16_t turns) {
+  if (digitalRead(PIN_ZERO_POSITION_SWITCH)) {
+    --currentTurn;
+    powerOnStepper();
+    stepper.newMoveDegreesCCW(360 * turns);
+  } else {
+    Serial.println("[ERROR] Attempt to open when zero switch is TRUE.");
+  }
+};
