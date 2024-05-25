@@ -9,10 +9,10 @@
 #define PIN_STEPPER_4 7
 #define PIN_MOTOR_POWER 8
 #define PIN_LED 13
-#define MAX_TURN_LIMIT 10
 
+#define MAX_TURN_LIMIT 10
 #define MAX_CW_RPM 24
-#define MAX_CCW_RPM 15
+#define MAX_CCW_RPM 12
 
 CheapStepper stepper(PIN_STEPPER_1, PIN_STEPPER_2, PIN_STEPPER_3,
                      PIN_STEPPER_4);
@@ -35,6 +35,7 @@ void setup() {
   attachInterrupt(0, interruptMinLimitSwitch, FALLING);
   attachInterrupt(1, interruptMaxLimitSwitch, FALLING);
   gotoZero();
+  Serial.print("[SETUP] Complete.");
 }
 
 void loop() {
@@ -53,29 +54,43 @@ void interruptMinLimitSwitch() {
   powerOffStepper();
   stepper.stop();
   currentTurn = 0;
+  Serial.println("[INT0]");
 }
 
 void interruptMaxLimitSwitch() {
   powerOffStepper();
   stepper.stop();
   maxTurn = currentTurn;
+  Serial.println("[INT1]");
 }
 
+/* Установка актуатора в 0 положение.
+ * Функция независима от других функций и работает напрямую с пинами
+ * контроллера. */
 void gotoZero() {
-  if (powerOnStepper()) {
-    while (true) {
-      stepper.setRpm(MAX_CCW_RPM);
-      stepper.moveDegreesCCW(360);
+  digitalWrite(PIN_MOTOR_POWER, HIGH);
+  stepper.setRpm(MAX_CCW_RPM);
+  currentTurn = -1;
+  Serial.print("[CALIBRATION] ");
+  while (currentTurn) {
+    stepper.moveDegreesCCW(360);
+    if (currentTurn != 0) {
+      Serial.print(String(currentTurn) + " ");
+      --currentTurn;
+    } else {
+      Serial.println("[CALIBRATION] Complete. Current turn: " +
+                     String(currentTurn));
     }
-    powerOffStepper();
   }
+  powerOffStepper();
 }
 
 boolean powerOnStepper() {
   int16_t minSwitchStatus = digitalRead(PIN_MIN_POSITION_SWITCH);
   int16_t maxSwitchStatus = digitalRead(PIN_MAX_POSITION_SWITCH);
 
-  if (minSwitchStatus || maxSwitchStatus || currentTurn <= MAX_TURN_LIMIT) {
+  if (minSwitchStatus || maxSwitchStatus || currentTurn <= MAX_TURN_LIMIT ||
+      currentTurn >= 0) {
     digitalWrite(PIN_MOTOR_POWER, HIGH);
     return true;
   } else {
@@ -92,7 +107,9 @@ boolean powerOnStepper() {
 void powerOffStepper() { digitalWrite(PIN_MOTOR_POWER, LOW); }
 
 void turnToPush(uint16_t turns) {
+  
   if (powerOnStepper()) {
+    stepper.setRpm(MAX_CW_RPM);
     ++currentTurn;
     maxTurn < currentTurn ? maxTurn = currentTurn : false;
     stepper.newMoveDegreesCW(360 * turns);
@@ -101,6 +118,7 @@ void turnToPush(uint16_t turns) {
 
 void turnToPull(uint16_t turns) {
   if (powerOnStepper()) {
+    stepper.setRpm(MAX_CCW_RPM);
     --currentTurn;
     stepper.newMoveDegreesCCW(360 * turns);
   }
