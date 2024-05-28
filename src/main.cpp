@@ -10,18 +10,18 @@
 #define PIN_MOTOR_POWER 8
 #define PIN_LED 13
 
-#define MAX_TURN_LIMIT 10
+#define MAX_TURN_LIMIT 5
 #define MAX_CW_RPM 24
 #define MAX_CCW_RPM 12
 
 CheapStepper stepper(PIN_STEPPER_1, PIN_STEPPER_2, PIN_STEPPER_3,
                      PIN_STEPPER_4);
-int32_t currentTurn = 0;
-int32_t maxTurn = 0;
+volatile int32_t currentTurn = 0;
+volatile int32_t maxTurn = 0;
 
 void turnToPush(uint16_t turns);
 void turnToPull(uint16_t turns);
-boolean powerOnStepper();
+void powerOnStepper();
 void powerOffStepper();
 void gotoZero();
 void interruptMinLimitSwitch();
@@ -35,33 +35,28 @@ void setup() {
   attachInterrupt(0, interruptMinLimitSwitch, FALLING);
   attachInterrupt(1, interruptMaxLimitSwitch, FALLING);
   gotoZero();
-  Serial.print("[SETUP] Complete.");
+  Serial.print("[SETUP] Complete.\n");
 }
 
 void loop() {
-  // stepper.run();
-
-  // if (stepper.getStepsLeft() == 0) {
-  //   Serial.println("[" + String(currentTurn) + "] " +
-  //                  String(digitalRead(PIN_MIN_POSITION_SWITCH)));
-
-  //   turnToPush(1);
-  //   delay(3000);
-  // }
+  stepper.run();
+  if (stepper.getStepsLeft() == 0) {
+    Serial.print("[LOOP] Current turn: " + String(currentTurn) + "\n");
+    turnToPush(1);
+    delay(3000);
+  }
 }
 
 void interruptMinLimitSwitch() {
-  powerOffStepper();
+  // powerOffStepper();
   stepper.stop();
   currentTurn = 0;
-  Serial.println("[INT0]");
 }
 
 void interruptMaxLimitSwitch() {
   powerOffStepper();
   stepper.stop();
   maxTurn = currentTurn;
-  Serial.println("[INT1]");
 }
 
 /* Установка актуатора в 0 положение.
@@ -71,44 +66,34 @@ void gotoZero() {
   digitalWrite(PIN_MOTOR_POWER, HIGH);
   stepper.setRpm(MAX_CCW_RPM);
   currentTurn = -1;
-  Serial.print("[CALIBRATION] ");
+  Serial.print("[CALIBRATION] Start ");
   while (currentTurn) {
-    stepper.moveDegreesCCW(360);
+    stepper.newMoveDegreesCCW(360);
+    while (stepper.getStepsLeft()) stepper.run();
     if (currentTurn != 0) {
       Serial.print(String(currentTurn) + " ");
       --currentTurn;
     } else {
-      Serial.println("[CALIBRATION] Complete. Current turn: " +
-                     String(currentTurn));
+      Serial.print("\n[CALIBRATION] Complete.\n");
     }
   }
   powerOffStepper();
 }
 
-boolean powerOnStepper() {
-  int16_t minSwitchStatus = digitalRead(PIN_MIN_POSITION_SWITCH);
-  int16_t maxSwitchStatus = digitalRead(PIN_MAX_POSITION_SWITCH);
-
-  if (minSwitchStatus || maxSwitchStatus || currentTurn <= MAX_TURN_LIMIT ||
-      currentTurn >= 0) {
-    digitalWrite(PIN_MOTOR_POWER, HIGH);
-    return true;
+void powerOnStepper() {
+  if (!digitalRead(PIN_MIN_POSITION_SWITCH) &&
+      !digitalRead(PIN_MAX_POSITION_SWITCH)) {
+    Serial.print("[ERROR] Both limit switches are closed.\n");
   } else {
-    !minSwitchStatus ? interruptMinLimitSwitch() : interruptMaxLimitSwitch();
-    Serial.println("[ERROR] Bad attempt to power on stepper. Current turn: " +
-                   String(currentTurn) +
-                   ", PIN_MIN_POSITION_SWITCH = " + String(minSwitchStatus) +
-                   ", PIN_MAX_POSITION_SWITCH = " + String(maxSwitchStatus) +
-                   ", MAX_TURN_LIMIT = " + String(MAX_TURN_LIMIT) + ".");
-    return false;
+    digitalWrite(PIN_MOTOR_POWER, HIGH);
   }
 }
 
 void powerOffStepper() { digitalWrite(PIN_MOTOR_POWER, LOW); }
 
 void turnToPush(uint16_t turns) {
-  
-  if (powerOnStepper()) {
+  if (digitalRead(PIN_MAX_POSITION_SWITCH) || currentTurn < MAX_TURN_LIMIT) {
+    powerOnStepper();
     stepper.setRpm(MAX_CW_RPM);
     ++currentTurn;
     maxTurn < currentTurn ? maxTurn = currentTurn : false;
@@ -117,7 +102,8 @@ void turnToPush(uint16_t turns) {
 }
 
 void turnToPull(uint16_t turns) {
-  if (powerOnStepper()) {
+  if (digitalRead(PIN_MIN_POSITION_SWITCH)) {
+    powerOnStepper();
     stepper.setRpm(MAX_CCW_RPM);
     --currentTurn;
     stepper.newMoveDegreesCCW(360 * turns);
